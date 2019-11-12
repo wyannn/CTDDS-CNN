@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-from utils_try import read_data
+from utils_try import resBlock, read_data, upsample
 import time
 import os
 import tensorflow as tf
 import numpy as np
+import tensorflow.contrib.slim as slim
 
 class UP(object):
 
-    def __init__(self, sess, image_size = 41, label_size = 41, batch_size = 64,
+    def __init__(self, sess, image_size = 40, label_size = 40, batch_size = 64, 
                  c_dim = 1, checkpoint_dir = None):
 
         self.sess = sess
@@ -17,7 +18,6 @@ class UP(object):
         self.batch_size = batch_size
         self.c_dim = c_dim
         self.checkpoint_dir = checkpoint_dir
-        
         self.build_model()
 
     def build_model(self):
@@ -25,10 +25,11 @@ class UP(object):
         self.images_jp = tf.placeholder(tf.float32, [self.batch_size, self.image_size, self.image_size, self.c_dim], name='images')
         self.labels = tf.placeholder(tf.float32, [self.batch_size, self.label_size, self.label_size, self.c_dim], name='labels')                
         
-        #mae
-        self.pred = self.model()
-        self.loss = tf.reduce_mean(tf.losses.absolute_difference(self.labels, self.pred))
         
+        self.pred = self.model()
+        #self.pred = self.edsr()
+        
+        self.loss = tf.reduce_mean(tf.losses.absolute_difference(self.labels, self.pred))
         
         tf.summary.scalar("loss",self.loss)
         self.merged = tf.summary.merge_all()
@@ -43,7 +44,6 @@ class UP(object):
         
         self.train_op = tf.train.AdamOptimizer(Config.learning_rate).minimize(self.loss)
 
-        
         tf.global_variables_initializer().run()
         
         summary_writer = tf.summary.FileWriter("./graph",graph=tf.get_default_graph())
@@ -61,7 +61,6 @@ class UP(object):
         for ep in range(Config.epoch):
             batch_idxs = len(train_data_jp) // Config.batch_size
             
-            #shuffle
             permutation = np.random.permutation(train_data_jp.shape[0])
 
             minn = 10000
@@ -89,7 +88,6 @@ class UP(object):
 
     def model(self):
         
-        #
         b1_conv_low1 = tf.contrib.layers.conv2d(self.images_jp, 64, kernel_size=(3,3), stride=1, padding='SAME')
         b1_conv_low2 = tf.contrib.layers.conv2d(b1_conv_low1, 64, kernel_size=(3,3), stride=1, padding='SAME')
         
@@ -107,7 +105,6 @@ class UP(object):
     
         b1_total = tf.concat([b1_conv2_add, b1_conv3_add], 3)
 
-        #
         b2_conv_dr1 = tf.contrib.layers.conv2d(b1_total, 64, kernel_size=(1,1), stride=1, padding='SAME', activation_fn=None)
         b2_conv_dr2 = tf.contrib.layers.conv2d(b2_conv_dr1, 64, kernel_size=(3,3), stride=1, padding='SAME')
         
@@ -125,7 +122,6 @@ class UP(object):
         
         b2_total = tf.concat([b1_total, b2_conv1_add, b2_conv2_add, b2_conv3_add], 3)
 
-        #
         b4_conv_dr1 = tf.contrib.layers.conv2d(b2_total, 64, kernel_size=(1,1), stride=1, padding='SAME', activation_fn=None)
         b4_conv_dr2 = tf.contrib.layers.conv2d(b4_conv_dr1, 64, kernel_size=(3,3), stride=1, padding='SAME')
         
@@ -142,6 +138,24 @@ class UP(object):
         
         b4_residual = tf.contrib.layers.conv2d(b4_conv3_2, 1, kernel_size=(3,3), stride=1, padding='SAME', activation_fn=None)
         output = b4_residual + self.images_jp
+        
+        return output
+    
+    def edsr(self):
+        
+        features_num = 128
+
+        x = slim.conv2d(self.images, features_num, [3,3])
+        conv_1 = x	
+        
+        for i in range(32):
+            x = resBlock(x, features_num, scale=0.1)
+        
+        x = slim.conv2d(x, features_num, [3,3])
+        x += conv_1	
+        x = upsample(x, 2, features_num, None)
+        x = slim.conv2d(x, 1, [3,3], activation_fn=None)
+        output = x
         
         return output
 
