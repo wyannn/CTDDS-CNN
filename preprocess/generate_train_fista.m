@@ -36,8 +36,8 @@ for i = 1 : length(filepaths)
     for x = 1 : stride : hei-size_input+1
         for y = 1 :stride : wid-size_input+1
             
-            subim_label = im_input(x : x+size_label-1, y : y+size_label-1);
-            subim_input = im_label(x : x+size_input-1, y : y+size_input-1);
+            subim_input = im_input(x : x+size_label-1, y : y+size_label-1);
+            subim_label = im_label(x : x+size_input-1, y : y+size_input-1);
 
             count=count+1;
             data(:, :, 1, count) = subim_input;
